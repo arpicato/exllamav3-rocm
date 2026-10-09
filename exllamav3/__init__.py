@@ -20,11 +20,12 @@ def _default_allocator_settings():
     created after it, so hosts that already touched CUDA before importing the library still
     get it for the model.
 
-    Skipped on Windows (virtual-memory API support is uneven there) and on torch builds that
-    reject the option.
+    Skipped on Windows, ROCm and torch builds that reject the option.
     """
     import os, sys
-    if "PYTORCH_CUDA_ALLOC_CONF" in os.environ or sys.platform == "win32":
+    # ponytail: ROCm expandable mappings fault during ordinary zero fills on gfx1100;
+    # restore this default only after allocator mapping regressions pass on ROCm.
+    if "PYTORCH_CUDA_ALLOC_CONF" in os.environ or sys.platform == "win32" or torch.version.hip:
         return
     if os.environ.get("EXL3_EXPANDABLE_SEGMENTS", "1") == "0":
         return

@@ -112,6 +112,30 @@ class RecurrentCache(OrderedDict):
         return len(stranded)
 
 
+    def close(self):
+        """
+        Drop every checkpoint and release the host buffers now, rather than when this object is garbage
+        collected. A retired generator sits in a reference cycle with its page table, and jobs that failed
+        on it keep it reachable through their exception tracebacks, so the MB-scale host allocations would
+        otherwise linger. Nothing restores from a closed cache and a replacement generator has its own, so
+        it is safe to call more than once.
+        """
+        freed = 0
+        seen = set()
+        while len(self):
+            _, popped = self.popitem(last = False)
+            if id(popped) in seen:
+                continue
+            seen.add(id(popped))
+            freed += popped["checkpoint_size"]
+            if self.model.loaded_tp:
+                self.model.tp_dispatch_all(mp_cache_recurrent_del, (id(self), popped["tp_handle"]))
+        self.current_size = 0
+        self.pagetable = None
+        if freed:
+            note_freed(freed)
+        malloc_trim()
+
     def update_total_size(self):
         seen = set()
         total = 0
